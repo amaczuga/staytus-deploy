@@ -7,11 +7,15 @@ then configured in `group_vars/all`.
 The inventory file should be filled with
 real host names.
 
-```cp inventory/staytus.example inventory/staytus
-vim inventory/staytus```
+```
+cp inventory/staytus.example inventory/staytus
+vim inventory/staytus
+```
 
 The install command can look like:
 
-```ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i inventory/staytus site.yml```
+```
+ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i inventory/staytus site.yml
+```
 
 This version has been tested on RHEL 6.5
