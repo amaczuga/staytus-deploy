@@ -1,0 +1,28 @@
+# rvm
+rvm1_rubies:
+  - ruby-2.3.1
+
+rvm1_install_path: /usr/local/rvm
+
+rvm1_gpg_key_server: hkp://keys.gnupg.net:80
+
+# staytus
+staytus_repo:
+  # keep this one unless https://github.com/adamcooke/staytus/pull/105 and https://github.com/adamcooke/staytus/pull/106 are merged
+  url: https://github.com/amaczuga/staytus
+  version: master
+
+# mysql
+database: 
+  password: changeme
+  host: localhost
+  admin_user: root
+  admin_pass: changeme
+
+# smtp
+smtp: 
+  # leave unconfigured to let staytus use local sendmail
+  host: localhost
+  port: 25
+  user: smtpuser
+  password: changeme

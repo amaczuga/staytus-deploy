@@ -1,0 +1,6 @@
+[staytus-servers]
+staytus-0	ansible_ssh_host=staytus-0 ansible_user=ec2-user
+staytus-1	ansible_ssh_host=staytus-1 ansible_user=ec2-user
+
+[staytus-all:children]
+staytus-servers

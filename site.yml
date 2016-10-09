@@ -1,0 +1,160 @@
+---
+
+- name: "https://github.com/ansible/ansible/issues/14655"
+  hosts: staytus-all
+- name: "install statyus"
+  hosts: staytus-all
+  any_errors_fatal: true
+  become: yes
+  pre_tasks: 
+    - name: "check ssh connectivity"
+      become: no
+      local_action: wait_for port=22 host={{ ansible_ssh_host }} search_regex=OpenSSH delay=5
+    - name: "install required OS packages"
+      package: 
+        name: "{{ item }}"
+        state: present
+      with_items: 
+        - bzip2
+        - gcc-c++
+        - patch
+        - readline
+        - readline-devel
+        - zlib
+        - zlib-devel
+        - libyaml
+        - libyaml-devel
+        - libffi-devel
+        - openssl-devel
+        - make
+        - autoconf
+        - automake
+        - libtool
+        - bison
+        - sqlite-devel
+        - mysql
+        - mysql-devel
+        - nodejs
+        - git
+        - python-pip
+        - python-devel
+    - name: "install required python packages"
+      pip: 
+        name: "MySQL-python"
+    - name: "create staytus db"
+      mysql_db:
+        name: "staytus"
+        collation: "utf8_unicode_ci"
+        encoding: "utf8"
+        login_host: "{{ database.host }}"
+        login_user: "{{ database.admin_user }}"
+        login_password: "{{ database.admin_pass }}"
+      when: database.admin_pass
+    - name: "create staytus db user"
+      mysql_user:
+        name: "staytus"
+        host: "%"
+        password: "{{ database.password }}"
+        priv: "staytus.*:ALL,GRANT"
+        login_host: "{{ database.host }}"
+        login_user: "{{ database.admin_user }}"
+        login_password: "{{ database.admin_pass }}"
+      when: database.admin_pass
+    - name: "create staytus user"
+      user: 
+        name: "staytus"
+        system: yes
+      register: staytus_user
+  roles:
+    - role: rvm_io.rvm1-ruby
+  environment: 
+    PATH: "{{ rvm1_install_path }}/gems/{{ rvm1_rubies | last }}/bin:{{ ansible_env.PATH }}"
+    GEM_HOME: "{{ rvm1_install_path }}/gems/{{ rvm1_rubies | last }}"
+    GEM_PATH: "{{ rvm1_install_path }}/gems/{{ rvm1_rubies | last }}:{{ rvm1_install_path }}/gems/{{ rvm1_rubies | last }}@global"
+  post_tasks: 
+    - block: 
+      - name: "download staytus"
+        git: 
+          repo: "{{ staytus_repo.url }}"
+          dest: "{{ staytus_user.home }}/staytus"
+          version: "{{ staytus_repo.version }}"
+      - name: "bundle staytus gems"
+        command: "bundle install --deployment --without development:test"
+        args: 
+          chdir: "{{ staytus_user.home }}/staytus"
+      - name: "create database config"
+        command: "cp config/database.example.yml config/database.yml"
+        args: 
+          chdir: "{{ staytus_user.home }}/staytus"
+      - name: "set database host"
+        lineinfile: 
+          dest: "{{ staytus_user.home }}/staytus/config/database.yml"
+          regexp: "^  host:.*$"
+          line: "  host: {{ database.host }}"
+        when: database.host
+      - name: "set database password"
+        lineinfile: 
+          dest: "{{ staytus_user.home }}/staytus/config/database.yml"
+          regexp: "^  password:.*$"
+          line: "  password: {{ database.password }}"
+        when: database.password
+      - name: "create smtp config"
+        command: "cp config/environment.example.yml config/environment.yml"
+        args: 
+          chdir: "{{ staytus_user.home }}/staytus"
+      - name: "set smtp host"
+        lineinfile: 
+          dest: "{{ staytus_user.home }}/staytus/config/environment.yml"
+          regexp: "^STAYTUS_SMTP_HOSTNAME:.*$"
+          line: "STAYTUS_SMTP_HOSTNAME: '{{ smtp.host }}'"
+        when: smtp.host
+      - name: "set smtp port"
+        lineinfile: 
+          dest: "{{ staytus_user.home }}/staytus/config/environment.yml"
+          regexp: "^STAYTUS_SMTP_PORT:.*$"
+          line: "STAYTUS_SMTP_PORT: '{{ smtp.port }}'"
+        when: smtp.port
+      - name: "set smtp user"
+        lineinfile: 
+          dest: "{{ staytus_user.home }}/staytus/config/environment.yml"
+          regexp: "^STAYTUS_SMTP_USERNAME:.*$"
+          line: "STAYTUS_SMTP_USERNAME: '{{ smtp.user }}'"
+        when: smtp.user
+      - name: "set smtp password"
+        lineinfile: 
+          dest: "{{ staytus_user.home }}/staytus/config/environment.yml"
+          regexp: "^STAYTUS_SMTP_PASSWORD:.*$"
+          line: "STAYTUS_SMTP_PASSWORD: '{{ smtp.password }}'"
+        when: smtp.password
+      - name: "build staytus"
+        command: "bundle exec rake staytus:build"
+        args:
+          chdir: "{{ staytus_user.home }}/staytus"
+      - name: "install staytus"
+        command: "bundle exec rake staytus:install"
+        args:
+          chdir: "{{ staytus_user.home }}/staytus"
+        ignore_errors: yes
+      - name: "generate staytus initscript"
+        command: "bundle exec foreman export -a staytus -l log initscript ."
+        args:
+          chdir: "{{ staytus_user.home }}/staytus"
+        register: initscript_generated
+      become_user: "staytus"
+    - name: "setup staytus initscript"
+      file: 
+        path: "{{ staytus_user.home }}/staytus/staytus"
+        owner: "root"
+        group: "root"
+        mode: 0755
+      when: initscript_generated.rc == 0
+    - name: "install staytus initscript"
+      command: "mv {{ staytus_user.home }}/staytus/staytus /etc/init.d"
+      when: initscript_generated.rc == 0
+      register: initscript_installed
+    - name: "initialize staytus service"
+      service: 
+        name: staytus
+        enabled: yes
+        state: started
+        pattern: "bin/rails server"
